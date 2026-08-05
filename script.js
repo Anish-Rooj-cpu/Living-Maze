@@ -39,8 +39,10 @@
   const MOVE_COOLDOWN = 60;
 
   // Fading trails
-  let collapsedTiles = []; // {r, c, expire}
+  let collapsedTiles = []; 
   const COLLAPSE_DURATION = 4000; 
+
+  let difficulty = 'asian'; // 'easy', 'medium', 'asian'
 
   let autoPilotActive = false;
   let solutionCooldownUntil = 0;
@@ -414,7 +416,8 @@
   function moveEnemies(){
     moveEnemy(zombieA, player.r, player.c);
 
-    if(zombieBActive){
+    // Zombie B (Ambusher) intercepts path
+    if(zombieBActive && difficulty === 'asian'){
       const pPath = bfsPath(walls, player.r, player.c, exitCell.r, exitCell.c);
       let targetR = player.r, targetC = player.c;
       if(pPath && pPath.length > 5){
@@ -455,18 +458,30 @@
     enemySpeed = 1;
     won = false; lost = false; running = false;
     autoPilotActive = false;
-    solutionCooldownUntil = 0;
+    solutionBot = null; solutionCooldownUntil = 0;
     collapsedTiles = [];
     solutionBtn.disabled = false;
     solutionBtn.textContent = 'Auto-Pilot';
     solutionBtn.style.boxShadow = '';
+    
+    // Disable hunters completely on easy
+    if (difficulty === 'easy') {
+      zombieA = null;
+      zombieBActive = false;
+    }
+
     lastActualMove = performance.now();
     updateHud();
     drawMaze(performance.now());
     drawActors();
   }
 
-  function startGame(){
+  function startGame(e){
+    // Determine difficulty if started from a specific button
+    if (e && e.target && e.target.dataset.diff) {
+      difficulty = e.target.dataset.diff;
+    }
+    
     resetGame();
     running = true;
     const now = performance.now();
@@ -490,20 +505,33 @@
       overlay.innerHTML = `
         <h2 class="glow-gold">You Cleared the Shift</h2>
         <p>You crossed <b class="glow-gold">${moveCount}</b> steps and endured <b class="glow-gold">${shiftCount}</b> shifts of the maze in <b class="glow-gold">${(elapsed/1000).toFixed(1)}s</b>.</p>
-        <button id="startBtn2">Escape Again</button>
+        <div class="btnrow" style="margin-top: 10px;">
+          <button class="secondary btn-start" data-diff="easy">Easy</button>
+          <button class="secondary btn-start" data-diff="medium">Medium</button>
+          <button class="btn-start" data-diff="asian">Asian</button>
+        </div>
       `;
     } else {
       overlay.innerHTML = `
         <h2 class="glow-blood">Caught in the Turning Walls</h2>
         <p>You held out for <b class="glow-blood">${(elapsed/1000).toFixed(1)}s</b> across <b class="glow-blood">${shiftCount}</b> shifts before it found you.</p>
-        <button id="startBtn2">Try Again</button>
+        <div class="btnrow" style="margin-top: 10px;">
+          <button class="secondary btn-start" data-diff="easy">Easy</button>
+          <button class="secondary btn-start" data-diff="medium">Medium</button>
+          <button class="btn-start" data-diff="asian">Asian</button>
+        </div>
       `;
     }
-    document.getElementById('startBtn2').addEventListener('click', startGame);
+    
+    document.querySelectorAll('.btn-start').forEach(btn => {
+      btn.addEventListener('click', startGame);
+    });
   }
 
   function checkCollision(){
-    if((player.r === zombieA.r && player.c === zombieA.c) || 
+    if (difficulty === 'easy') return false;
+    
+    if((zombieA && player.r === zombieA.r && player.c === zombieA.c) || 
        (zombieBActive && player.r === zombieB.r && player.c === zombieB.c)){
       endGame(false);
       return true;
@@ -631,13 +659,17 @@
   function updateHud(){
     statMoves.textContent = moveCount;
     statShifts.textContent = shiftCount;
-    const dA = bfsDist(walls, zombieA.r, zombieA.c, player.r, player.c);
-    const dB = zombieBActive ? bfsDist(walls, zombieB.r, zombieB.c, player.r, player.c) : Infinity;
-    const d = Math.min(dA, dB);
+    
+    let d = Infinity;
+    if (difficulty !== 'easy') {
+      const dA = zombieA ? bfsDist(walls, zombieA.r, zombieA.c, player.r, player.c) : Infinity;
+      const dB = zombieBActive ? bfsDist(walls, zombieB.r, zombieB.c, player.r, player.c) : Infinity;
+      d = Math.min(dA, dB);
+    }
     
     statDist.textContent = (d===Infinity) ? '—' : d;
     statDist.style.color = (d!==Infinity && d<=3) ? 'var(--blood-bright)' : '';
-    statSpeed.textContent = 'x' + enemySpeed;
+    statSpeed.textContent = (difficulty === 'easy') ? '—' : ('x' + enemySpeed);
     statSpeed.style.color = enemySpeed >= 2 ? 'var(--blood-bright)' : '';
     
     updateStress(d);
@@ -734,10 +766,12 @@
     playerPix.x += (targetPx - playerPix.x) * 0.35;
     playerPix.y += (targetPy - playerPix.y) * 0.35;
 
-    const targetAx = PADDING + zombieA.c*CELL;
-    const targetAy = PADDING + zombieA.r*CELL;
-    zAPix.x += (targetAx - zAPix.x) * 0.22;
-    zAPix.y += (targetAy - zAPix.y) * 0.22;
+    if(zombieA) {
+      const targetAx = PADDING + zombieA.c*CELL;
+      const targetAy = PADDING + zombieA.r*CELL;
+      zAPix.x += (targetAx - zAPix.x) * 0.22;
+      zAPix.y += (targetAy - zAPix.y) * 0.22;
+    }
 
     if(zombieBActive){
       const targetBx = PADDING + zombieB.c*CELL;
@@ -746,22 +780,24 @@
       zBPix.y += (targetBy - zBPix.y) * 0.15;
     }
 
-    const acx = zAPix.x + CELL/2, acy = zAPix.y + CELL/2;
-    const aGrad = ctx.createRadialGradient(acx,acy,1,acx,acy,CELL*0.6);
-    aGrad.addColorStop(0, '#ff6a3d');
-    aGrad.addColorStop(1, 'rgba(143,29,29,0)');
-    ctx.fillStyle = aGrad;
-    ctx.beginPath(); ctx.arc(acx,acy,CELL*0.6,0,Math.PI*2); ctx.fill();
-    ctx.fillStyle = '#e8402f';
-    ctx.beginPath();
-    const rotA = performance.now()/400;
-    for(let i=0;i<16;i++){
-      const r2 = (i%2===0) ? CELL*0.3 : CELL*0.15;
-      const ang = rotA + (Math.PI*i)/8;
-      if(i===0) ctx.moveTo(acx + Math.cos(ang)*r2, acy + Math.sin(ang)*r2); 
-      else ctx.lineTo(acx + Math.cos(ang)*r2, acy + Math.sin(ang)*r2);
+    if (zombieA) {
+      const acx = zAPix.x + CELL/2, acy = zAPix.y + CELL/2;
+      const aGrad = ctx.createRadialGradient(acx,acy,1,acx,acy,CELL*0.6);
+      aGrad.addColorStop(0, '#ff6a3d');
+      aGrad.addColorStop(1, 'rgba(143,29,29,0)');
+      ctx.fillStyle = aGrad;
+      ctx.beginPath(); ctx.arc(acx,acy,CELL*0.6,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#e8402f';
+      ctx.beginPath();
+      const rotA = performance.now()/400;
+      for(let i=0;i<16;i++){
+        const r2 = (i%2===0) ? CELL*0.3 : CELL*0.15;
+        const ang = rotA + (Math.PI*i)/8;
+        if(i===0) ctx.moveTo(acx + Math.cos(ang)*r2, acy + Math.sin(ang)*r2); 
+        else ctx.lineTo(acx + Math.cos(ang)*r2, acy + Math.sin(ang)*r2);
+      }
+      ctx.fill();
     }
-    ctx.fill();
 
     if(zombieBActive){
       const bcx = zBPix.x + CELL/2, bcy = zBPix.y + CELL/2;
@@ -834,7 +870,9 @@
   }
 
   // ---------- wire up ----------
-  startBtn.addEventListener('click', startGame);
+  document.querySelectorAll('.btn-start').forEach(btn => {
+    btn.addEventListener('click', startGame);
+  });
   restartBtn.addEventListener('click', ()=>{
     clearTimeout(tickTimer);
     startGame();
