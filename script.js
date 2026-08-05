@@ -3,8 +3,12 @@
 
   // ---------- config ----------
   const N = 25;                 
-  const CELL = 22;               
   const PADDING = 4;
+  
+  // The canvas is now scaled natively via CSS flexbox.
+  // We render at a fixed, high resolution (supersampling) to keep it crisp.
+  const CELL = 28;
+
   const CANVAS_SIZE = N * CELL + PADDING * 2;
 
   const DIRS = ['N','E','S','W'];
