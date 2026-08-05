@@ -458,7 +458,7 @@
     enemySpeed = 1;
     won = false; lost = false; running = false;
     autoPilotActive = false;
-    solutionBot = null; solutionCooldownUntil = 0;
+    solutionCooldownUntil = 0;
     collapsedTiles = [];
     solutionBtn.disabled = false;
     solutionBtn.textContent = 'Auto-Pilot';
